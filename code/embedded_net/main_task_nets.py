@@ -37,7 +37,6 @@ def launch_simul(net,Inets,nt,train,w_in,w_fb,input_Inets,w_inj,target,BPhi,Pinv
     Inets_gEx = []
     nb_Inets = len(Inets)
     N_Inets = Inets[0].N
-    NE_Inets = Inets[0].NE
     
     for i in range(nb_epochs):
         print('Epoch {}/{}.'.format(i+1,nb_epochs))
@@ -101,29 +100,7 @@ def launch_simul(net,Inets,nt,train,w_in,w_fb,input_Inets,w_inj,target,BPhi,Pinv
             SpikesIRes = net.I_idx[F_I[0,:]]        
             if len(SpikesIRes) > 0:
                 gIn = gIn + np.multiply(net.GI,np.sum(net.W[:,SpikesIRes],axis=1))  #Increase the conductance of postsyn neurons
-            
-#==============================================================================
-#             #F_E_Inets = np.zeros(NE_Inets*nb_Inets)
-#             for Inet_i in range(len(Inets)):
-#                 #Update conductance of postsyn neurons
-#                 Inet = Inets[Inet_i]
-#                 indices = np.all([[t-F_Inets[Inet.E_idx+(Inet_i*N_Inets)]==Inet.delays[Inet.E_idx]],
-#                                   [F_Inets[Inet.E_idx+(Inet_i*N_Inets)] != 0]],axis = 0,keepdims=0)
-#                 F_E_Inets[(Inet_i*NE_Inets):((Inet_i+1)*NE_Inets)] = indices
-#                
-#                 SpikesE = Inet.E_idx[indices[0,:]]          #If a neuron spikes x time-steps ago, activate post-syn 
-#                 if len(SpikesE) > 0:
-#                     gEx_Inets[(Inet_i*N_Inets):((Inet_i+1)*N_Inets)] = gEx_Inets[(Inet_i*N_Inets):((Inet_i+1)*N_Inets)]
-#                     + np.multiply(Inet.GE,np.sum(Inet.W[:,SpikesE],axis=1))  #Increase the conductance of postsyn neurons
-#                             
-#                 indices = np.all([[t-F_Inets[Inet.I_idx+(Inet_i*N_Inets)]==Inet.delays[Inet.I_idx]],
-#                                   [F_Inets[Inet.I_idx+(Inet_i*N_Inets)] != 0]],axis = 0,keepdims=0)
-#                 SpikesI = Inet.I_idx[indices[0,:]]        
-#                 if len(SpikesI) > 0:
-#                     gIn_Inets[(Inet_i*N_Inets):((Inet_i+1)*N_Inets)] = gIn_Inets[(Inet_i*N_Inets):((Inet_i+1)*N_Inets)]
-#                     + np.multiply(Inet.GI,np.sum(Inet.W[:,SpikesI],axis=1))  #Increase the conductance of postsyn neurons
-#==============================================================================
-
+                
             F_E_Inets = np.all([[t-F_Inets[E_idx_Inets]==delays_Inets[E_idx_Inets]],
                                               [F_Inets[E_idx_Inets] != 0]],axis = 0,keepdims=0)
             SpikesEInets = E_idx_Inets[F_E_Inets[0,:]]
@@ -145,7 +122,7 @@ def launch_simul(net,Inets,nt,train,w_in,w_fb,input_Inets,w_inj,target,BPhi,Pinv
                    
             noise = np.random.normal(0,1,N)*gain_noise
             #Leaky Integrate-and-fire
-            dV_res = ((net.VRest-V) + np.multiply(gEx,net.RE-V) + 
+            dV_res = ((net.VRest-V) + np.multiply(gEx,net.RE-V) +
                       np.multiply(gIn,net.RI-V) + net.ITonic + noise)                                     #Compute raw voltage change
             V = V + (dV_res * (dt/net.tau))                                        #Update membrane potential based on tau
             #M[:,t] = V
@@ -217,7 +194,7 @@ mean_delays = 0.001/dt              # transmission delay (ms)
 N = 1000
 p_NI = 0.2
 p = 0.1
-G = 0.04
+G = 0.02
 GaussW = 0
 ITonic = 9
 gain_noise = 0
@@ -230,14 +207,12 @@ tr = 0.002
 
 #Input parameters
 #gain_in_list = np.arange(0,5,0.5)
-gain_in = 0.1
 start_stim = 0.5
 t_stim = int(start_stim/dt)
 len_stim = T-start_stim
 n_step_stim = int(len_stim/dt)
 #p_in_list = np.arange(0,1,0.1)
-p_in = 1
-p_fb = 1
+
 
 #Target function
 N_out = 1
@@ -256,16 +231,21 @@ p_Inets = 1
 TauI = 0.06
 
 p_inj = 1
+p_in = 0.3
+p_fb = 1
+p_res = 0.3
 gain_inj = 23
 gain_fb = 0
+gain_in = 0.1
 input_Inets = np.zeros((nb_Inets*N_Inets,nt))
 input_Inets[:,t_stim:t_stim+n_step_stim] = 1
 Inets = [network.net(N_Inets,p_NI,mean_delays,Refractory,G=G_Inets,p=p_Inets, 
                      mean_GE = GE_Inets, mean_GI = GI_Inets, ITonic=8.5, 
                      mean_TauFall_I=TauI) for GI_Inets in GI_Inets_list]
-           
-
-
+    
+osc_range = [5,7]           
+N_osc = 3
+    
 #training params
 alpha = dt*0.1
 step = 50
@@ -283,8 +263,8 @@ NE_Inets = int(N_Inets-(N_Inets*p_NI))
 scale_in = gain_in/np.sqrt((p_in*N*NE_Inets))
 scale_fb = gain_fb/np.sqrt((p_fb*NE*N_Inets))
 scale_inj = gain_inj/np.sqrt((p_inj*N_Inets))
-w_in = scale_in*np.abs(np.multiply(np.random.normal(0,1,(N,NE_Inets*nb_Inets)),
-                                   np.random.rand(N,NE_Inets*nb_Inets)<p_in))
+w_in = scale_in*np.abs(np.random.normal(0,1,(N,NE_Inets*nb_Inets)))
+w_in[np.random.choice(N,N-int(N*p_in)),:] = 0
 w_fb = scale_fb*np.abs(np.multiply(np.random.normal(0,1,(NE,N_Inets*nb_Inets)),
                                    np.random.rand(NE,N_Inets*nb_Inets)<p_fb))
 w_inj = scale_inj*np.abs(np.multiply(np.random.normal(0,1,N_Inets*nb_Inets),
