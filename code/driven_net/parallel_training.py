@@ -104,6 +104,7 @@ def launch_simul(net,nt,alpha,dt,input_res,save_path,dir_i,dir_j,target,nb_tests
     data['output'] = output
     data['BPhi'] = BPhi
     data['target'] = target
+	data['net'] = net
     with open("{}{}/{}/{}".format(save_path,dir_i,dir_j,"readout.p"),'wb') as f:
         pickle.dump(data,f)
 
