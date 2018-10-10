@@ -240,7 +240,7 @@ gain_in = 0.1
 input_Inets = np.zeros((nb_Inets*N_Inets,nt))
 input_Inets[:,t_stim:t_stim+n_step_stim] = 1
 Inets = [network.net(N_Inets,p_NI,mean_delays,Refractory,G=G_Inets,p=p_Inets, 
-                     mean_GE = GE_Inets, mean_GI = GI_Inets, ITonic=9, 
+                     mean_GE = GE_Inets, mean_GI = GI_Inets, ITonic=8.5, 
                      mean_TauFall_I=TauI) for GI_Inets in GI_Inets_list]
     
 osc_range = [5,7]           

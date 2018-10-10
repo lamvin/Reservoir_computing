@@ -6,6 +6,9 @@ Created on Wed May 23 09:36:50 2018
 """
 import numpy as np
 import numpy
+import sys
+sys.path.append("C:/Users/User1/Documents/Projects/Reservoir_computing/code/embedded_net/")
+import network
 import matplotlib.pyplot as plt
 import pp
 from datetime import datetime
@@ -30,64 +33,74 @@ def lowpass_filter(data, cutoff, fs):
     filtered_data = lfilter(b, a, data)
     return filtered_data    
 
-def launch_simul(N,nt,tm,tr,td,vreset,vrest,vpeak,BIAS,alpha,OMEGA,dt,tref,w_in,
-                 input_pattern,save_path,dir_i,dir_j,target,nb_tests,
-                 nb_repetitions,train_start):
+def launch_simul(net,nt,alpha,dt,input_res,save_path,dir_i,dir_j,target,nb_tests,step,
+                 nb_epochs,train_start):
     
     #Setting up plot and recording variables
-    output = numpy.zeros((nb_repetitions+nb_tests,nt))
-    Pinv =numpy.eye(N)*alpha
-    BPhi = numpy.zeros(N)
+    N = net.N
+    output = np.zeros((nb_epochs+nb_tests,nt))
+    Pinv = np.eye(net.NE)*alpha
+    BPhi = np.zeros(net.NE)
     data = {}
-    for rep_i in range(nb_repetitions+nb_tests):
+    for ep_i in range(nb_epochs+nb_tests):
         #Simulation variables
-        PSC = numpy.zeros(N)
-        h = numpy.zeros(N)
-        r = numpy.zeros(N)
-        hr = numpy.zeros(N)
-        JD = 0*PSC
-        #SP = {k:[] for k in range(N)}  
+        r = np.zeros(net.NE)
+        hr = np.zeros(net.NE)                       
+        gEx = np.zeros(N)                                            #Conductance of excitatory neurons
+        gIn = np.zeros(N)                                            #Conductance of excitatory neurons
+        F = np.full(N,np.nan)                                               #Last spike times of each inhibitory cells
+        V = np.random.normal(net.mean_VRest,abs(0.04*net.mean_VRest),N)   #Set initial voltage Exc 
+        #Recording variables
+        total_gEx = np.zeros(nt)
+        total_gIn = np.zeros(nt)
         sparse_mat = scipy.sparse.lil_matrix((N,nt))
-        #sparse_mat = numpy.zeros((N,nt))
-        tlast = numpy.zeros(N)
-        #REC = numpy.zeros((nt,10))
-        v = vreset +numpy.random.normal(15,6,(N))
-        for i in range(nt):
-            I = PSC + BIAS
-            dv = numpy.multiply((dt*i>(tlast + tref)),((vrest-v)+I+ numpy.dot(w_in,input_pattern[:,i])) /tm)
-            v = v+(dt*dv)
-            
-            index = numpy.where(v>=vpeak)[0]
-            
-            if len(index)>0:
-                JD = numpy.sum(OMEGA[:,index],axis=1)
-                for ni in index:
-                    sparse_mat[ni,i] = 1
-            tlast[index] = dt*i
-            
-            PSC = PSC*numpy.exp(-dt/tr) + h*dt
-            h = h*numpy.exp(-dt/td) + numpy.divide(JD*(len(index)>0),(tr*td))
-            r = r*numpy.exp(-dt/tr) + hr*dt
-            hr = hr*numpy.exp(-dt/td) + numpy.divide(v>=vpeak,tr*td)
-            
-            #Implement RLMS with the FORCE method
-            z = numpy.dot(BPhi.T,r)
-            err = z-target[i]
+        for t in range(nt):
+            #Conductuances decay exponentially to zero
+            gEx = np.multiply(gEx,np.exp(-dt/net.TauE))
+            gIn = np.multiply(gIn,np.exp(-dt/net.TauI))
+        
+            #Update conductance of postsyn neurons
+            F_E = np.all([[t-F[net.E_idx]==net.delays[net.E_idx]],[F[net.E_idx] != 0]],axis = 0,keepdims=0)
+           
+            SpikesERes = net.E_idx[F_E[0,:]]          #If a neuron spikes x time-steps ago, activate post-syn 
+            if len(SpikesERes ) > 0:
+                gEx = gEx + np.multiply(net.GE,np.sum(net.W[:,SpikesERes],axis=1))  #Increase the conductance of postsyn neurons
+            F_I = np.all([[t-F[net.I_idx]==net.delays[net.I_idx]],[F[net.I_idx] != 0]],axis = 0,keepdims=0)
+            SpikesIRes = net.I_idx[F_I[0,:]]        
+            if len(SpikesIRes) > 0:
+                gIn = gIn + np.multiply(net.GI,np.sum(net.W[:,SpikesIRes],axis=1))  #Increase the conductance of postsyn neurons
+                     
+            #Leaky Integrate-and-fire
+            dV_res = ((net.VRest-V) + np.multiply(gEx,net.RE-V) + np.dot(net.w_res,input_res[:,t]) +
+                      np.multiply(gIn,net.RI-V) + net.ITonic)                                     #Compute raw voltage change
+            V = V + (dV_res * (dt/net.tau))                                        #Update membrane potential based on tau
+            #M[:,t] = V
     
+            r = r*np.exp(-dt/net.tr) + hr*dt
+            hr = hr*np.exp(-dt/net.td) + np.divide(V[net.E_idx]>=net.Theta[net.E_idx],net.tr*net.td)        
+            z = np.dot(BPhi.T,r)
+            output[ep_i,t] = z
+            err = z-target[t]
+                    
             #RLMS
-            if rep_i < nb_repetitions:
-                if i >= train_start:
-                    if i%50 == 1:
-                        cd = numpy.dot(Pinv,r)
-                        BPhi = BPhi-(cd*err)
-                        Pinv = Pinv - numpy.divide(numpy.outer(cd,cd.T),1 + numpy.dot(r.T,cd))
-
-            output[rep_i,i] = z    
-            v = v + numpy.multiply(30 - v,v>=vpeak)
-            v = v + numpy.multiply(vreset-v,v>=vpeak)
+            if t >= train_start and ep_i<nb_epochs:
+                if t%step == 1:
+                    cd = np.dot(Pinv,r)
+                    BPhi = BPhi-(cd*err)
+                    Pinv = Pinv - np.divide(np.outer(cd,cd.T),1 + np.dot(r.T,cd))
+                    
+            #Update cells
+            Refract = t <= (F + net.Refractory)
+            V[Refract] = net.VRest[Refract]                                           #Hold resting potential of neurons in refractory period            
+            spikers = np.where(V > net.Theta)[0]
+            F[spikers] = t                                                              #Update the last AP fired by the neuron
+            V[spikers] = 0                                                             #Membrane potential at AP time
+            sparse_mat[spikers,t] = 1 
+            total_gEx[t] = np.sum(gEx)
+            total_gIn[t] = np.sum(gIn)
             
         sparse_mat = scipy.sparse.csr_matrix(sparse_mat)
-        scipy.sparse.save_npz("{}{}/{}/{}.npz".format(save_path,dir_i,dir_j,rep_i), sparse_mat)
+        scipy.sparse.save_npz("{}{}/{}/{}.npz".format(save_path,dir_i,dir_j,ep_i), sparse_mat)
     data['output'] = output
     data['BPhi'] = BPhi
     data['target'] = target
@@ -97,35 +110,36 @@ def launch_simul(N,nt,tm,tr,td,vreset,vrest,vpeak,BIAS,alpha,OMEGA,dt,tref,w_in,
 #Sim params
 startTime = datetime.now()
 #output_path = "C:/Users/Cortex/Google Drive/Philippe/Python/spiking_reservoir/results/"
-#output_path = "C:/Users/User1/Google Drive/Philippe/Python/spiking_reservoir/training/results/"
+output_path = "C:/Users/User1/Google Drive/Philippe/Python/spiking_reservoir/training/results/"
 #output_path = "C:/Users/one/Documents/Philippe Vincent-Lamarre/spiking_reservoir/results/"
-output_path = "C:/Users/Cortex/Documents/Philippe/spiking_reservoir/"
+#output_path = "C:/Users/Cortex/Documents/Philippe/spiking_reservoir/"
 
 #Network parameters
 N = 1000
+pNI = 0.2
 dt = 5e-05
+mean_delays = 0.001/dt
+mean_GE = 0.8#0.8
+mean_GI = 2.5#3              #0.055 Conductance (0.001 = 1pS)1.5
 fs = np.int(1/dt)
-tref = 2e-03
-tm = 0.01
-vreset = -65
-vrest = -65
-vpeak = -40
+tref = 2e-03/dt
+p = 0.1
+ITonic = 9
 td = 0.02
 tr = 0.002
-p = 0.1
 #G = 0.02
-G_list = [0,0.005,0.01,0.02,0.03,0.04,0.05,0.075,0.1,0.2,0.3]
-
+#G_list = [0,0.005,0.01,0.02,0.03,0.04,0.05,0.075,0.1]
+G_list = [0.02,0.04]
 #Simulation parameters
 T = 2
 nt = np.round(T/dt).astype(int)
-nb_repetitions = 20
+nb_epochs = 20
 nb_tests = 1
 
 #Input parameters
-BIAS = 25
 #gain_in = 5000
-gain_in_list = np.arange(0,20000,2000)
+#gain_in_list = np.arange(0,50,10)
+gain_in_list = [10,25]
 osc_range = [5,7]
 N_in = 3
 start_stim = 0.5
@@ -140,10 +154,10 @@ step = 50
 train_start = int(np.round(start_stim/dt))
 
 #Parallel init
-modules_names = ('numpy','scipy.sparse',)
+modules_names = ('scipy.sparse','network','numpy as np',)
 
 ppservers = ()
-job_server = pp.Server(ppservers=ppservers)
+job_server = pp.Server(ppservers=ppservers,ncpus=2)
 print("Starting pp with " + str(job_server.get_ncpus()) + " workers")
 
 #Initialization
@@ -158,7 +172,7 @@ data['cond1'] = gain_in_list
 data['cond2'] = G_list
 data['nb_steps'] = nt
 data['dt'] = dt
-data['nb_repetitions'] = nb_repetitions  
+data['nb_epochs'] = nb_epochs 
 data['N'] = N
 data['T'] = T
 data['start_stim'] = start_stim
@@ -177,30 +191,32 @@ for cond_i in range(nb_cond1):
         ensure_dir('{}/{}/{}/'.format(save_path,cond_i,cond_j))
         data[cond_j] = {}
         G = G_list[cond_j]
-        OMEGA = G*np.multiply(np.random.normal(0,1,(N,N)),np.random.rand(N,N)<p)/(np.sqrt(N*p))
+        net = network.net(N,pNI,mean_delays,tref,G=G,p=p, mean_GE = mean_GE, mean_GI = mean_GI, ITonic=ITonic)
+        net.tr = tr
+        net.td = td
         osc_periods = np.random.uniform(osc_range[0],osc_range[1],N_in)
-        input_pattern = np.zeros((N_in,nt))
+        input_res = np.zeros((N_in,nt))
         if N_in > 0:
-            N_in_net = int(np.round(p_in*N))
-            scale_in = gain_in/(N_in_net*N_in)
-            temp_w_in = np.random.normal(0,scale_in,(N_in_net,N_in))  #Strength of connections to D
-            w_in = np.zeros((N,N_in))
+            N_in_net = int(np.round(p_in*net.NE))
+            scale_in = gain_in/np.sqrt((N_in_net*N_in))
+            temp_w_in = scale_in*np.random.normal(0,1,(N_in_net,N_in))  #Strength of connections to D
+            temp_w_in = np.abs(scale_in*np.multiply(np.random.normal(0,1,(net.NE,N_in)),np.random.rand(net.NE,N_in)<p_in))
+            w_res = np.zeros((N,N_in))
+            w_res[net.E_idx,:] = temp_w_in
+            net.w_res = w_res
             phase = np.random.uniform(0,1,N_in)*np.pi 
     
             for inp_cell in range(N_in):
-                input_pattern[inp_cell,t_stim:t_stim+n_step_stim] =  (np.sin(2*np.pi*osc_periods[inp_cell]*(np.linspace(phase[inp_cell],len_stim+phase[inp_cell],n_step_stim))) + 1)/2   
+                input_res[inp_cell,t_stim:t_stim+n_step_stim] =  (np.sin(2*np.pi*osc_periods[inp_cell]*(np.linspace(phase[inp_cell],len_stim+phase[inp_cell],n_step_stim))) + 1)/2   
                 #input_pattern[inp_cell,t_stim:t_stim+n_step_stim] =  (np.sin(2*np.pi*osc_periods[inp_cell]*(np.linspace(phase[inp_cell],len_stim+phase[inp_cell],n_step_stim))))   
                 exc_idx = np.random.choice(N,N_in_net)
-                w_in[exc_idx,inp_cell] = temp_w_in[:,inp_cell]
         #Target function
         sigma = 30
         target = np.zeros(nt)
         target[t_stim:] = lowpass_filter(np.random.randn(n_step_stim)*sigma,10,fs)
         
-        jobs[cond_i][cond_j] = job_server.submit(launch_simul,(N,nt,tm,tr,td,vreset,
-                        vrest,vpeak,BIAS,alpha,OMEGA,dt,tref,w_in,input_pattern,
-                        save_path,cond_i,cond_j,target,nb_tests,nb_repetitions,
-                        train_start),modules=modules_names)
+        jobs[cond_i][cond_j] = job_server.submit(launch_simul,(net,nt,alpha,dt,input_res,save_path,cond_i,cond_j,target,nb_tests,
+                 step,nb_epochs,train_start),modules=modules_names)
 
 [jobs[cond_i][cond_j]() for cond_i,cond_j in itertools.product(
         np.arange(nb_cond1),np.arange(nb_cond2))]
