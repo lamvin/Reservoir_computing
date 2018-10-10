@@ -6,7 +6,7 @@ Created on Wed May 23 09:36:50 2018
 """
 import numpy as np
 import sys
-sys.path.append("C:/Users/User1/Documents/Projects/Reservoir_computing/code/embedded_net/")
+#sys.path.append("C:/Users/User1/Documents/Projects/Reservoir_computing/code/embedded_net/")
 import network
 import matplotlib.pyplot as plt
 import pp
@@ -78,9 +78,10 @@ def launch_simul(net,nt,dt,input_res,save_path,dir_i,dir_j,rep_i,
 #Sim params
 startTime = datetime.now()
 #output_path = "C:/Users/Cortex/Google Drive/Philippe/Python/spiking_reservoir/results/"
-output_path = "C:/Users/User1/Google Drive/Philippe/Python/spiking_reservoir/training/results/"
+#output_path = "C:/Users/User1/Google Drive/Philippe/Python/spiking_reservoir/training/results/"
 #output_path = "C:/Users/one/Documents/Philippe Vincent-Lamarre/spiking_reservoir/results/"
 #output_path = "C:/Users/Cortex/Documents/Philippe/spiking_reservoir/"
+output_path = "C:/Users/two/Documents/Philippe Vincent-Lamarre/spiking_reservoir/results/"
 
 #Network parameters
 #N = 300
@@ -118,7 +119,7 @@ p_in = 1
 modules_names = ('scipy.sparse','network','numpy as np',)
 
 ppservers = ()
-job_server = pp.Server(ppservers=ppservers,ncpus=2)
+job_server = pp.Server(ppservers=ppservers)
 print("Starting pp with " + str(job_server.get_ncpus()) + " workers")
 
 #Initialization
@@ -139,7 +140,7 @@ data['T'] = T
 data['nb_repetitions'] = nb_repetitions
 #data['G'] = G
 
-dir_name = data['cond1_name'] + '-' + data['cond2_name'] +'_task/'
+dir_name = data['cond1_name'] + '-' + data['cond2_name'] +'_osc/'
 save_path = output_path+dir_name
     
 jobs = {}
@@ -153,7 +154,7 @@ for cond_i in range(nb_cond1):
             ensure_dir('{}/{}/{}/{}/'.format(save_path,cond_i,cond_j,rep_i))
             data[cond_j] = {}
             G = G_list[cond_j]
-            net = network.net(N,pNI,mean_delays,tref,G=G,p=p, mean_GE = mean_GE, mean_GI = mean_GI, ITonic=ITonic)
+            net = network.net(N,pNI,mean_delays,tref,G=G,p=p, mean_GE = mean_GE, mean_GI = mean_GI, mean_TauFall_I =0.06, ITonic=ITonic)
             input_res = np.zeros(nt)
             N_in_net = int(np.round(p_in*net.N))
             scale_in = gain_in/np.sqrt(N_in_net)
