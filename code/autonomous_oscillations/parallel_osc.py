@@ -56,7 +56,7 @@ def launch_simul(net,nt,dt,input_res,save_path,dir_i,dir_j,rep_i,
                 gIn = gIn + np.multiply(net.GI,np.sum(net.W[:,SpikesIRes],axis=1))  #Increase the conductance of postsyn neurons
                      
             #Leaky Integrate-and-fire
-            dV_res = ((net.VRest-V) + np.multiply(gEx,net.RE-V) + np.dot(net.w_res,input_res[:,t]) +
+            dV_res = ((net.VRest-V) + np.multiply(gEx,net.RE-V) + np.dot(net.w_res,input_res[t]) +
                       np.multiply(gIn,net.RI-V) + net.ITonic)                                     #Compute raw voltage change
             V = V + (dV_res * (dt/net.tau))                                        #Update membrane potential based on tau
 
@@ -106,9 +106,9 @@ nb_epochs = 10
 nb_repetitions = 10
 
 #Input parameters
-#gain_in = 5000
+gain_in = 23
 #gain_in_list = np.arange(0,50,10)
-gain_in_list = [10,25]
+#gain_in_list = [10,25]
 start_stim = 1
 t_stim = int(start_stim/dt)
 len_stim = T-start_stim
@@ -123,8 +123,8 @@ job_server = pp.Server(ppservers=ppservers)
 print("Starting pp with " + str(job_server.get_ncpus()) + " workers")
 
 #Initialization
-nb_cond1 = len(gain_in_list)
-nb_cond2 = len(G_list)
+nb_cond1 = len(N_list)
+nb_cond2 = len(mean_GI_list)
 
 #Initialization
 data = {}
@@ -146,14 +146,16 @@ save_path = output_path+dir_name
 jobs = {}
 for cond_i in range(nb_cond1):
     #print('Running simulation {}/{}'.format(cond_i,nb_cond1))
-    gain_in = gain_in_list[cond_i]
+    N = N_list[cond_i]
     jobs[cond_i] = {}
     for cond_j in range(nb_cond2):
         #print('Cond {}'.format(cond_j))
+
+        mean_GI = mean_GI_list[cond_j]
         for rep_i in range(nb_repetitions):
             ensure_dir('{}/{}/{}/{}/'.format(save_path,cond_i,cond_j,rep_i))
             data[cond_j] = {}
-            G = G_list[cond_j]
+            #G = G_list[cond_j]
             net = network.net(N,pNI,mean_delays,tref,G=G,p=p, mean_GE = mean_GE, mean_GI = mean_GI, mean_TauFall_I =0.06, ITonic=ITonic)
             input_res = np.zeros(nt)
             N_in_net = int(np.round(p_in*net.N))
