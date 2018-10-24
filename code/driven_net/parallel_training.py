@@ -7,7 +7,7 @@ Created on Wed May 23 09:36:50 2018
 import numpy as np
 import numpy
 import sys
-sys.path.append("C:/Users/User1/Documents/Projects/Reservoir_computing/code/embedded_net/")
+#sys.path.append("C:/Users/User1/Documents/Projects/Reservoir_computing/code/embedded_net/")
 import network
 import matplotlib.pyplot as plt
 import pp
@@ -33,7 +33,7 @@ def lowpass_filter(data, cutoff, fs):
     filtered_data = lfilter(b, a, data)
     return filtered_data    
 
-def launch_simul(net,nt,alpha,dt,input_res,save_path,dir_i,dir_j,target,nb_tests,step,
+def launch_simul(net,nt,alpha,dt,input_res,save_path,dir_i,dir_j,rep_i,target,nb_tests,step,
                  nb_epochs,train_start):
     
     #Setting up plot and recording variables
@@ -100,20 +100,20 @@ def launch_simul(net,nt,alpha,dt,input_res,save_path,dir_i,dir_j,target,nb_tests
             total_gIn[t] = np.sum(gIn)
             
         sparse_mat = scipy.sparse.csr_matrix(sparse_mat)
-        scipy.sparse.save_npz("{}{}/{}/{}.npz".format(save_path,dir_i,dir_j,ep_i), sparse_mat)
+        scipy.sparse.save_npz("{}{}/{}/{}/{}.npz".format(save_path,dir_i,dir_j,rep_i,ep_i), sparse_mat)
     data['output'] = output
     data['BPhi'] = BPhi
     data['target'] = target
-	data['net'] = net
-    with open("{}{}/{}/{}".format(save_path,dir_i,dir_j,"readout.p"),'wb') as f:
+    data['net'] = net
+    with open("{}{}/{}/{}/{}".format(save_path,dir_i,dir_j,rep_i,"readout.p"),'wb') as f:
         pickle.dump(data,f)
 
 #Sim params
 startTime = datetime.now()
 #output_path = "C:/Users/Cortex/Google Drive/Philippe/Python/spiking_reservoir/results/"
-output_path = "C:/Users/User1/Google Drive/Philippe/Python/spiking_reservoir/training/results/"
+#output_path = "C:/Users/User1/Google Drive/Philippe/Python/spiking_reservoir/training/results/"
 #output_path = "C:/Users/one/Documents/Philippe Vincent-Lamarre/spiking_reservoir/results/"
-#output_path = "C:/Users/Cortex/Documents/Philippe/spiking_reservoir/"
+output_path = "C:/Users/Cortex/Documents/Philippe/spiking_reservoir/"
 
 #Network parameters
 N = 1000
@@ -129,18 +129,19 @@ ITonic = 9
 td = 0.02
 tr = 0.002
 #G = 0.02
-#G_list = [0,0.005,0.01,0.02,0.03,0.04,0.05,0.075,0.1]
-G_list = [0.02,0.04]
+G_list = [0,0.005,0.01,0.02,0.03,0.04,0.05,0.075,0.1]
+#G_list = [0.02,0.04]
 #Simulation parameters
 T = 2
 nt = np.round(T/dt).astype(int)
 nb_epochs = 20
+nb_repetitions = 10
 nb_tests = 1
 
 #Input parameters
 #gain_in = 5000
-#gain_in_list = np.arange(0,50,10)
-gain_in_list = [10,25]
+gain_in_list = np.arange(0,70,10)
+#gain_in_list = [10,25]
 osc_range = [5,7]
 N_in = 3
 start_stim = 0.5
@@ -158,7 +159,7 @@ train_start = int(np.round(start_stim/dt))
 modules_names = ('scipy.sparse','network','numpy as np',)
 
 ppservers = ()
-job_server = pp.Server(ppservers=ppservers,ncpus=2)
+job_server = pp.Server(ppservers=ppservers)
 print("Starting pp with " + str(job_server.get_ncpus()) + " workers")
 
 #Initialization
@@ -168,7 +169,7 @@ nb_cond2 = len(G_list)
 #Initialization
 data = {}
 data['cond1_name'] = 'gain_in'
-data['cond2_name'] = 'G_in'
+data['cond2_name'] = 'G'
 data['cond1'] = gain_in_list
 data['cond2'] = G_list
 data['nb_steps'] = nt
@@ -177,9 +178,10 @@ data['nb_epochs'] = nb_epochs
 data['N'] = N
 data['T'] = T
 data['start_stim'] = start_stim
+data['nb_repetitions'] = nb_repetitions
 #data['G'] = G
 
-dir_name = data['cond1_name'] + '-' + data['cond2_name'] +'_task/'
+dir_name = data['cond1_name'] + '-' + data['cond2_name'] +'_task2/'
 save_path = output_path+dir_name
     
 jobs = {}
@@ -189,38 +191,40 @@ for cond_i in range(nb_cond1):
     jobs[cond_i] = {}
     for cond_j in range(nb_cond2):
         #print('Cond {}'.format(cond_j))
-        ensure_dir('{}/{}/{}/'.format(save_path,cond_i,cond_j))
-        data[cond_j] = {}
-        G = G_list[cond_j]
-        net = network.net(N,pNI,mean_delays,tref,G=G,p=p, mean_GE = mean_GE, mean_GI = mean_GI, ITonic=ITonic)
-        net.tr = tr
-        net.td = td
-        osc_periods = np.random.uniform(osc_range[0],osc_range[1],N_in)
-        input_res = np.zeros((N_in,nt))
-        if N_in > 0:
-            N_in_net = int(np.round(p_in*net.NE))
-            scale_in = gain_in/np.sqrt((N_in_net*N_in))
-            temp_w_in = scale_in*np.random.normal(0,1,(N_in_net,N_in))  #Strength of connections to D
-            temp_w_in = np.abs(scale_in*np.multiply(np.random.normal(0,1,(net.NE,N_in)),np.random.rand(net.NE,N_in)<p_in))
-            w_res = np.zeros((N,N_in))
-            w_res[net.E_idx,:] = temp_w_in
-            net.w_res = w_res
-            phase = np.random.uniform(0,1,N_in)*np.pi 
-    
-            for inp_cell in range(N_in):
-                input_res[inp_cell,t_stim:t_stim+n_step_stim] =  (np.sin(2*np.pi*osc_periods[inp_cell]*(np.linspace(phase[inp_cell],len_stim+phase[inp_cell],n_step_stim))) + 1)/2   
-                #input_pattern[inp_cell,t_stim:t_stim+n_step_stim] =  (np.sin(2*np.pi*osc_periods[inp_cell]*(np.linspace(phase[inp_cell],len_stim+phase[inp_cell],n_step_stim))))   
-                exc_idx = np.random.choice(N,N_in_net)
-        #Target function
-        sigma = 30
-        target = np.zeros(nt)
-        target[t_stim:] = lowpass_filter(np.random.randn(n_step_stim)*sigma,10,fs)
-        
-        jobs[cond_i][cond_j] = job_server.submit(launch_simul,(net,nt,alpha,dt,input_res,save_path,cond_i,cond_j,target,nb_tests,
-                 step,nb_epochs,train_start),modules=modules_names)
+		jobs[cond_i][cond_j] = {}
+		for rep_i in range(nb_repetitions):
+			ensure_dir('{}/{}/{}/{}/'.format(save_path,cond_i,cond_j,rep_i))
 
-[jobs[cond_i][cond_j]() for cond_i,cond_j in itertools.product(
-        np.arange(nb_cond1),np.arange(nb_cond2))]
+			G = G_list[cond_j]
+			net = network.net(N,pNI,mean_delays,tref,G=G,p=p, mean_GE = mean_GE, mean_GI = mean_GI, ITonic=ITonic)
+			net.tr = tr
+			net.td = td
+			osc_periods = np.random.uniform(osc_range[0],osc_range[1],N_in)
+			input_res = np.zeros((N_in,nt))
+			if N_in > 0:
+				N_in_net = int(np.round(p_in*net.NE))
+				scale_in = gain_in/np.sqrt((N_in_net*N_in))
+				temp_w_in = scale_in*np.random.normal(0,1,(N_in_net,N_in))  #Strength of connections to D
+				temp_w_in = np.abs(scale_in*np.multiply(np.random.normal(0,1,(net.NE,N_in)),np.random.rand(net.NE,N_in)<p_in))
+				w_res = np.zeros((N,N_in))
+				w_res[net.E_idx,:] = temp_w_in
+				net.w_res = w_res
+				phase = np.random.uniform(0,1,N_in)*np.pi 
+		
+				for inp_cell in range(N_in):
+					input_res[inp_cell,t_stim:t_stim+n_step_stim] =  (np.sin(2*np.pi*osc_periods[inp_cell]*(np.linspace(phase[inp_cell],len_stim+phase[inp_cell],n_step_stim))) + 1)/2   
+					#input_pattern[inp_cell,t_stim:t_stim+n_step_stim] =  (np.sin(2*np.pi*osc_periods[inp_cell]*(np.linspace(phase[inp_cell],len_stim+phase[inp_cell],n_step_stim))))   
+					exc_idx = np.random.choice(N,N_in_net)
+			#Target function
+			sigma = 30
+			target = np.zeros(nt)
+			target[t_stim:] = lowpass_filter(np.random.randn(n_step_stim)*sigma,10,fs)
+			
+			jobs[cond_i][cond_j][rep_i] = job_server.submit(launch_simul,(net,nt,alpha,dt,input_res,save_path,cond_i,cond_j,rep_i,target,nb_tests,
+					 step,nb_epochs,train_start),modules=modules_names)
+
+[jobs[cond_i][cond_j][rep_i]() for cond_i,cond_j,rep_i in itertools.product(
+        np.arange(nb_cond1),np.arange(nb_cond2),np.arange(nb_repetitions))]
     
 
 with open( output_path + dir_name + 'metadata.p', "wb") as f:
