@@ -29,6 +29,8 @@ def launch_simul(net,nt,dt,input_res,save_path,dir_i,dir_j,rep_i,
     #Setting up plot and recording variables
     N = net.N
     data = {}
+    total_gEx = np.zeros((nb_epochs,nt))
+    total_gIn = np.zeros((nb_epochs,nt))
     for ep_i in range(nb_epochs):
         #Simulation variables        
         gEx = np.zeros(N)                                            #Conductance of excitatory neurons
@@ -36,8 +38,6 @@ def launch_simul(net,nt,dt,input_res,save_path,dir_i,dir_j,rep_i,
         F = np.full(N,np.nan)                                               #Last spike times of each inhibitory cells
         V = np.random.normal(net.mean_VRest,abs(0.04*net.mean_VRest),N)   #Set initial voltage Exc 
         #Recording variables
-        total_gEx = np.zeros(nt)
-        total_gIn = np.zeros(nt)
         sparse_mat = scipy.sparse.lil_matrix((N,nt))
         for t in range(nt):
             #Conductuances decay exponentially to zero
@@ -67,21 +67,24 @@ def launch_simul(net,nt,dt,input_res,save_path,dir_i,dir_j,rep_i,
             F[spikers] = t                                                              #Update the last AP fired by the neuron
             V[spikers] = 0                                                             #Membrane potential at AP time
             sparse_mat[spikers,t] = 1 
-            total_gEx[t] = np.sum(gEx)
-            total_gIn[t] = np.sum(gIn)
+            total_gEx[ep_i,t] = np.sum(gEx)
+            total_gIn[ep_i,t] = np.sum(gIn)
             
         sparse_mat = scipy.sparse.csr_matrix(sparse_mat)
         scipy.sparse.save_npz("{}{}/{}/{}/{}.npz".format(save_path,dir_i,dir_j,rep_i,ep_i), sparse_mat)
+    data['net'] = net
+    data['total_gEx'] = total_gEx
+    data['total_gIn'] = total_gIn
     with open("{}{}/{}/{}/{}".format(save_path,dir_i,dir_j,rep_i,"net.p"),'wb') as f:
         pickle.dump(data,f)
 
 #Sim params
 startTime = datetime.now()
 #output_path = "C:/Users/Cortex/Google Drive/Philippe/Python/spiking_reservoir/results/"
-#output_path = "C:/Users/User1/Google Drive/Philippe/Python/spiking_reservoir/training/results/"
+output_path = "C:/Users/User1/Documents/Projects/Reservoir_computing/data/"
 #output_path = "C:/Users/one/Documents/Philippe Vincent-Lamarre/spiking_reservoir/results/"
 #output_path = "C:/Users/Cortex/Documents/Philippe/spiking_reservoir/"
-output_path = "C:/Users/two/Documents/Philippe Vincent-Lamarre/spiking_reservoir/results/"
+#output_path = "C:/Users/two/Documents/Philippe Vincent-Lamarre/spiking_reservoir/results/"
 
 #Network parameters
 #N = 300
@@ -92,6 +95,7 @@ mean_delays = 0.001/dt
 mean_GE = 0.8#0.8
 #mean_GI = 2#3              #0.055 Conductance (0.001 = 1pS)1.5
 mean_GI_list = np.arange(0.5,4,0.25)
+#mean_GI_list = [1,1.5]
 fs = np.int(1/dt)
 tref = 2e-03/dt
 p = 1
